@@ -1,0 +1,66 @@
+name: CI-CD Paper Draft Agent
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY_NAME: paperdraftacr
+  IMAGE_NAME: paper-draft-agent
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run basic tests (optional)
+        run: |
+          python -m compileall src
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get ACR login server
+        id: acr
+        run: |
+          LOGIN_SERVER=$(az acr show -n $REGISTRY_NAME --query loginServer -o tsv)
+          echo "login_server=$LOGIN_SERVER" >> $GITHUB_OUTPUT
+
+      - name: Build and push Docker image
+        run: |
+          IMAGE_TAG=${{ steps.acr.outputs.login_server }}/${IMAGE_NAME}:${{ github.sha }}
+          echo "IMAGE_TAG=$IMAGE_TAG"
+          az acr build \
+            --registry $REGISTRY_NAME \
+            --image $IMAGE_TAG \
+            .
+
+      - name: Deploy with azd
+        run: |
+          IMAGE_TAG=${{ steps.acr.outputs.login_server }}/${IMAGE_NAME}:${{ github.sha }}
+          cd azure
+          azd env set containerImage $IMAGE_TAG
+          azd deploy
