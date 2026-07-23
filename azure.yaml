@@ -1,0 +1,9 @@
+name: paper-draft-agent
+services:
+  agent:
+    project: ./src
+    language: python
+    host:
+      type: foundry-agent
+      protocol: responses
+      model: ${FOUNDRY_MODEL_NAME}
