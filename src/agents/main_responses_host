@@ -1,0 +1,53 @@
+import os
+from typing import Dict, Any
+
+from azure.identity import DefaultAzureCredential
+from langchain_azure_ai.agents.hosting import ResponsesHostServer
+from langgraph.graph import CompiledGraph
+
+from .graph import build_graph
+from .models import get_llm
+
+
+def compile_agent_graph() -> CompiledGraph:
+    graph = build_graph()
+    return graph.compile()
+
+
+def create_host_server() -> ResponsesHostServer:
+    compiled_graph = compile_agent_graph()
+
+    # Simple wrapper: input JSON -> initial PaperState
+    def handle_request(body: Dict[str, Any]) -> Dict[str, Any]:
+        initial_state = {
+            "committee_id": body.get("committee_id"),
+            "period": body.get("period"),
+            "year": body.get("year"),
+            "user_upn": body.get("user_upn"),
+            "committee_template_id": "",
+            "meetings": [],
+            "previous_papers": [],
+            "aggregated_context": {},
+            "draft_text": "",
+            "reviewed_text": "",
+            "draft_url": "",
+        }
+        final_state = compiled_graph.invoke(initial_state)
+        return {
+            "draft_url": final_state["draft_url"],
+            "reviewed_text": final_state["reviewed_text"],
+        }
+
+    server = ResponsesHostServer(
+        project_endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
+        credential=DefaultAzureCredential(),
+        # The handler is used for non-chat JSON requests; for pure chat you can adapt.
+        custom_handler=handle_request,
+    )
+    return server
+
+
+if __name__ == "__main__":
+    server = create_host_server()
+    # Local dev: run HTTP server on port 8000
+    server.run(port=8000)
