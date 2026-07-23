@@ -1,0 +1,6 @@
+```text
+langchain-azure-ai[tools,hosting]>=1.2.4
+langgraph>=0.2.0
+azure-identity>=1.16.0
+requests>=2.32.0
+python-dotenv>=1.0.1
